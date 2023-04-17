@@ -5,13 +5,13 @@
 @using System.Net.Http.Headers;
 @using System.Text.RegularExpressions;
 @inject HttpClient Http
-
+ 
 <PageTitle>Magelo Rankings</PageTitle>
 
 <h1>Magelo Rankings</h1>
 <p><InputFile OnChange="@LoadFile" /> <button class="btn btn-primary btn-sm" @onclick="Upload">@_buttonText</button></p>
 <hr />
-@if (_buttonText == "Uploading...")
+@if (_buttonText == "Uploading")
 {
     <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading...</span>
