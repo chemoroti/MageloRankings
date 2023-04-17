@@ -1,0 +1,214 @@
+﻿@page "/"
+@page "/rankings"
+@using MageloRankings.Models;
+@using MageloRankings.Services;
+@using System.Net.Http.Headers;
+@using System.Text.RegularExpressions;
+@inject HttpClient Http
+
+<PageTitle>Magelo Rankings</PageTitle>
+
+<h1>Magelo Rankings</h1>
+<p><InputFile OnChange="@LoadFile" /> <button class="btn btn-primary btn-sm" @onclick="Upload">@_buttonText</button></p>
+<hr />
+@if (_buttonText == "Uploading...")
+{
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+}
+else if (_uploaded)
+{
+    <p>
+        <button class="btn btn-info btn-sm" @onclick="(() => _showFilters = !_showFilters)">Toggle Filters</button>
+        <button class="btn btn-info btn-sm" @onclick="(() => _showSorting = !_showSorting)">Toggle Sorting</button>
+    </p>
+    <EditForm Model="@_queryParams">
+        <DataAnnotationsValidator />
+        <div class="@(_showFilters ? "" : "d-none")">
+            <p><h4>Filters</h4></p>
+            @foreach(var item in _queryParams.Filters.Select((filter, index) => new { filter, index}))
+            {
+                <div class="row mb-3">
+                    <div class="col-3">
+                        <label>Stat</label>
+                        <select class="form-select" @bind="item.filter.Field">
+                            @foreach (FieldEnum field in Enum.GetValues(typeof(FieldEnum)).Cast<FieldEnum>())
+                            {
+                                <option value="@(field)">@SplitCamelCase(field.ToString())</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-3">
+                        <label>Operator</label>
+                        <select class="form-select" @bind="item.filter.Operator">
+                            @foreach (OperatorEnum op in Enum.GetValues(typeof(OperatorEnum)).Cast<OperatorEnum>())
+                            {
+                                <option value="@(op)">@SplitCamelCase(op.ToString())</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-3">
+                        <label>Value</label>
+                        <input type="text" class="form-control" @bind="@item.filter.Value" />
+                    </div>
+                    <div class="col-3">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-danger d-block" @onclick="(() => DeleteFilter(item.filter))"><span class="oi oi-trash"></span></button>
+                    </div>
+                </div>
+                @if(item.index < _queryParams.Filters.Count - 1)
+                {
+                    <div class="row">
+                        <div class="col-9 text-center"><h4 class="mb-0">AND</h4></div>
+                    </div>
+                }
+            }
+            <button class="btn btn-success btn-sm" @onclick="AddFilter"><span class="oi oi-plus"></span> Add Filter</button>
+            <hr />
+        </div>
+        <div class="@(_showSorting ? "" : "d-none")">
+            <div class="row mb-3">
+                <p><h4>Sorting</h4></p>
+                <div class="col-3">
+                    <label>Field</label>
+                    <select class="form-select" @bind="_queryParams.SortField">
+                        @foreach (FieldEnum field in Enum.GetValues(typeof(FieldEnum)).Cast<FieldEnum>())
+                        {
+                            <option value="@(field)">@SplitCamelCase(field.ToString())</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-3">
+                    <label>Order</label>
+                    <select class="form-select" @bind="_queryParams.SortOrder">
+                        @foreach (SortOrderEnum sort in Enum.GetValues(typeof(SortOrderEnum)).Cast<SortOrderEnum>())
+                        {
+                            <option value="@(sort)">@SplitCamelCase(sort.ToString())</option>
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+    </EditForm>
+
+    <p>
+        <button class="btn btn-primary" @onclick="Search">Search</button>
+        <button class="btn btn-warning" @onclick="Reset">Reset</button>
+    </p>
+}
+@if(_characters != null && _characters.Count > 0)
+{
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th></th>
+                <th>Name</th>
+                <th>Guild</th>
+                <th>Class</th>
+                <th>HP</th>
+                <th>Mana</th>
+                <th>AC</th>
+                <th>Attack</th>
+                <th>FT</th>
+                <th>Regen</th>
+                <th>Avg. Resists</th>
+            </tr>
+        </thead>
+        <tbody>
+            @for(int i = 0; i < _characters.Count; i++)
+            {
+                <tr>
+                    <th>@(i+1)</th>
+                    <td>@_characters[i].name</td>
+                    <td>@_characters[i].guild_name</td>
+                    <td>@(_characters[i].@class)</td>
+                    <td>@_characters[i].hp_max_total</td>
+                    <td>@_characters[i].mana_max_total</td>
+                    <td>@_characters[i].ac_total</td>
+                    <td>@_characters[i].atk_total</td>
+                    <td>@_characters[i].mana_regen_item</td>
+                    <td>@_characters[i].hp_regen_item</td>
+                    <td>@_characters[i].avg_resists</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+
+@code {
+    private static InMemoryDatabaseService? _db;
+    private static List<Character>? _characters = null;
+    IBrowserFile? _file = null;
+    private const int _maxFileSize = 50000000;
+    private string _buttonText = "Upload";
+    private bool _uploaded = _db != null;
+    private QueryParams _queryParams = new QueryParams();
+
+    private bool _showFilters = false;
+    private bool _showSorting = false;
+
+    private void LoadFile(InputFileChangeEventArgs e)
+    {
+        using var content = new MultipartFormDataContent();
+
+        _file = e.File;
+        if (_file == null)
+            return;
+
+        _characters = null;
+        _buttonText = "Upload";
+    }
+
+    private async void Upload()
+    {
+        if (_file == null)
+            return;
+
+        _buttonText = "Uploading...";
+        StreamContent fileContent = new StreamContent(_file.OpenReadStream(_maxFileSize));
+
+        _db = new InMemoryDatabaseService();
+        await _db.PopulateDatabase(fileContent);
+
+        _buttonText = "Uploaded";
+        _uploaded = true;
+        _showFilters = false;
+        _showSorting = false;
+        _queryParams = new QueryParams();
+        Search();
+        StateHasChanged();
+    }
+
+    private void Search()
+    {
+        if (_db == null)
+        {
+            throw new ArgumentNullException("Rankings::Search _db is null");
+        }
+
+        _characters = _db.Search(_queryParams);
+    }
+
+    private void Reset()
+    {
+        _queryParams = new QueryParams();
+        Search();
+    }
+
+    private string SplitCamelCase(string input)
+    {
+        return Regex.Replace(input, "([A-Z])", " $1", System.Text.RegularExpressions.RegexOptions.Compiled).Trim();
+    }
+
+    private void AddFilter()
+    {
+        _queryParams.Filters.Add(new Filter());
+    }
+
+    private void DeleteFilter(Filter filter)
+    {
+        _queryParams.Filters.Remove(filter);
+    }
+}
