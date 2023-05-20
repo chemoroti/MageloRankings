@@ -108,9 +108,9 @@ namespace MageloRankings.Models
 
         //Begin custom metrics
         public int avg_resists { get; set; }
-        public Character(string charData)
+        public Character(string charData, char delimiter = '\t')
         {
-            string[] split = charData.Split('\t');
+            string[] split = charData.Split(delimiter);
 
             name = split[0];
             last_name = split[1];
