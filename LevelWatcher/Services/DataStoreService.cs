@@ -1,4 +1,5 @@
-﻿using MageloRankings.Models;
+﻿using LevelWatcher.Models;
+using MageloRankings.Models;
 using MageloRankings.Services;
 using System;
 using System.Collections.Generic;
@@ -6,9 +7,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace LevelWatcher.Models
+namespace LevelWatcher.Services
 {
-    public class DataStoreParser
+    public class DataStoreService
     {
         private string? _csvPath;
         private string _dataExportPath;
@@ -16,7 +17,7 @@ namespace LevelWatcher.Models
 
         private InMemoryDatabaseService _databaseService;
         private CsvService _csvService;
-        public DataStoreParser(string? csvPath, string dataExportPath, string? dateString) 
+        public DataStoreService(string? csvPath, string dataExportPath, string? dateString)
         {
             _csvPath = csvPath;
             _dataExportPath = dataExportPath;
@@ -35,31 +36,45 @@ namespace LevelWatcher.Models
             _databaseService = new InMemoryDatabaseService();
             _csvService = new CsvService();
         }
-        public void IngestData()
+        public async Task DoTheThing()
         {
-            LoadExistingCsvData();
-            LoadNewData();
-            CombineData();
-            ExportData();
+            try
+            {
+                await LoadExistingCsvData();
+                await LoadNewData();
+                CombineData();
+                ExportData();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+                return;
+            }
         }
 
-        private void LoadExistingCsvData()
+        private async Task LoadExistingCsvData()
         {
-            if (_exportDate == DateTime.Now)
-            {
-                throw new ArgumentException("Data for today already exists in this csv file. Ending program.");
-            }
-
             if (_csvPath != null)
             {
-                Console.WriteLine("Ingesting existing character data");
-                StreamContent stream = new StreamContent(File.OpenRead(_csvPath));
-                _csvService.PopulateData(stream);
-                Console.WriteLine("Finished ingesting existing character data");
+                try
+                {
+                    Console.WriteLine("Ingesting existing character data");
+                    using (StreamContent stream = new StreamContent(File.OpenRead(_csvPath)))
+                    {
+                        await _csvService.PopulateData(stream);
+                    }
+                    
+                    Console.WriteLine("Finished ingesting existing character data");
+                }
+                catch (IOException e)
+                {
+                    Console.WriteLine(e.Message);
+                    throw;
+                }
             }
         }
 
-        private async void LoadNewData()
+        private async Task LoadNewData()
         {
             try
             {
@@ -67,9 +82,16 @@ namespace LevelWatcher.Models
                     throw new Exception("Must define valid path to new character data");
 
                 Console.WriteLine("Ingesting new character data");
-                FileStream stream = File.OpenRead(_dataExportPath);
-                await _databaseService.PopulateDatabase(new StreamContent(stream));
+                using (FileStream stream = File.OpenRead(_dataExportPath))
+                {
+                    await _databaseService.PopulateDatabase(new StreamContent(stream));
+                }
                 Console.WriteLine("Finished ingesting new character data");
+            }
+            catch (IOException ex)
+            {
+                Console.WriteLine(ex.Message);
+                throw;
             }
             catch (Exception ex)
             {
@@ -81,11 +103,11 @@ namespace LevelWatcher.Models
         private void CombineData()
         {
             Console.WriteLine("Combining new and existing character data");
-            List<Character> allCharacters = _databaseService.Search(new QueryParams());
+            List<Character> allCharacters = _databaseService.Search(new QueryParams() { Take = -1 });
             Dictionary<string, CharacterSimple> trackedCharacters = _csvService.GetCharacters();
             _csvService.AddHeaderDate(_exportDate);
 
-            foreach(Character character in allCharacters)
+            foreach (Character character in allCharacters)
             {
                 LevelDate levelDate = new LevelDate()
                 {
@@ -95,7 +117,7 @@ namespace LevelWatcher.Models
                 if (trackedCharacters.ContainsKey(character.name))
                 {
                     Console.WriteLine($"Updating Character: {character.name}");
-                    _csvService.UpdateCharacter(character.name, levelDate);
+                    _csvService.UpdateCharacter(character.name, character.guild_name, levelDate);
                 }
                 else
                 {
@@ -107,19 +129,26 @@ namespace LevelWatcher.Models
             Console.WriteLine("Finished combining data");
         }
 
-        public void ExportData()
+        private void ExportData()
         {
             Console.WriteLine("Beginning data export");
-            string data = _csvService.ExportData();
-            string date = _exportDate.ToShortDateString().Replace('/', '_');
-            string outputDir = _csvPath == null 
-                ? _dataExportPath.Substring(0, _dataExportPath.LastIndexOf('\\'))
-                : _csvPath.Substring(0, _csvPath.LastIndexOf('\\'));
+            try
+            {
+                string data = _csvService.ExportData();
+                string date = _exportDate.ToShortDateString().Replace('/', '_');
+                string outputDir = _csvPath == null
+                    ? _dataExportPath.Substring(0, _dataExportPath.LastIndexOf('\\'))
+                    : _csvPath.Substring(0, _csvPath.LastIndexOf('\\'));
 
-            string outputPath = $"{outputDir}\\LevelWatcher_{date}.csv";
-            File.WriteAllText(outputPath, data);
-
-            Console.WriteLine($"Done. Data written to {outputPath}");
+                string outputPath = $"{outputDir}\\LevelWatcher_{date}.csv";
+                File.WriteAllText(outputPath, data);
+                Console.WriteLine($"Done. Data written to {outputPath}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+                throw;
+            }
         }
     }
 }

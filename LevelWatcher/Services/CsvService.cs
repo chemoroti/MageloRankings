@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using LevelWatcher.Models;
 
-namespace LevelWatcher.Models
+namespace LevelWatcher.Services
 {
     public class CsvService
     {
@@ -16,7 +17,7 @@ namespace LevelWatcher.Models
         {
             return _characters;
         }
-        public async void PopulateData(StreamContent stream)
+        public async Task PopulateData(StreamContent stream)
         {
             string allData = await stream.ReadAsStringAsync();
             string[] rows = allData.Split('\n').Select(r => r.Trim()).ToArray();
@@ -45,9 +46,10 @@ namespace LevelWatcher.Models
             }
         }
 
-        public void UpdateCharacter(string name, LevelDate levelDate)
+        public void UpdateCharacter(string name, string guild, LevelDate levelDate)
         {
             _characters[name].LevelDates.Add(levelDate);
+            _characters[name].Guild = guild;
         }
 
         public void AddHeaderDate(DateTime headerDate)
@@ -74,7 +76,7 @@ namespace LevelWatcher.Models
 
             builder.AppendLine(BuildHeaderRowForExport(headerDates));
 
-            foreach(var character in _characters)
+            foreach (var character in _characters)
             {
                 builder.AppendLine(BuildCharacterRowForExport(character.Value, headerDates));
             }
@@ -85,10 +87,10 @@ namespace LevelWatcher.Models
         private string BuildHeaderRowForExport(List<DateTime> headerDates)
         {
             string headerRow = "Name";
-            
-            foreach(DateTime date in headerDates)
+
+            foreach (DateTime date in headerDates)
             {
-                headerRow += ($",Level on {date.ToShortDateString()}");
+                headerRow += $",Level on {date.ToShortDateString()}";
             }
 
             headerRow += ",1-Day Progress,2-Day Progress,3-Day Progress,7-Day Progress,Guild";
@@ -99,14 +101,20 @@ namespace LevelWatcher.Models
         private string BuildCharacterRowForExport(CharacterSimple character, List<DateTime> headerDates)
         {
             string row = $"{character.Name}";
-            foreach(DateTime date in headerDates)
+            foreach (DateTime date in headerDates)
             {
                 LevelDate? levelDate = character.LevelDates.FirstOrDefault(ld => ld.Date == date);
                 if (levelDate == null)
                 {
                     // if we don't have level data for them on this day (maybe they are anonymous), we just assume they gained no levels that day.
                     // This should never be null because their character data would not exist in this csv unless a column is populated
-                    levelDate = character.LevelDates.OrderByDescending(ld => ld.Date).First(ld => ld.Date <= date);
+                    levelDate = character.LevelDates.OrderByDescending(ld => ld.Date).FirstOrDefault(ld => ld.Date <= date);
+
+                    // No historical data. This is a new character. Populate their historical data as if they have always been this level.
+                    if (levelDate == null)
+                    {
+                        levelDate = character.LevelDates.OrderByDescending(ld => ld.Date).First();
+                    }
                 }
 
                 row += $",{levelDate.Level}";
@@ -116,22 +124,22 @@ namespace LevelWatcher.Models
 
             //1-day diff
             LevelDate? diff1 = character.LevelDates.OrderByDescending(ld => ld.Date).FirstOrDefault(ld => ld.Date <= latestLevelDate.Date.AddDays(-1));
-            int diff1Val = (diff1 == null) ? 0 : latestLevelDate.Level - diff1.Level;
+            int diff1Val = diff1 == null ? 0 : latestLevelDate.Level - diff1.Level;
             row += $",{diff1Val}";
 
             //2-day diff
             LevelDate? diff2 = character.LevelDates.OrderByDescending(ld => ld.Date).FirstOrDefault(ld => ld.Date <= latestLevelDate.Date.AddDays(-2));
-            int diff2Val = (diff2 == null) ? diff1Val : latestLevelDate.Level - diff2.Level;
+            int diff2Val = diff2 == null ? diff1Val : latestLevelDate.Level - diff2.Level;
             row += $",{diff2Val}";
 
             //3-day diff
             LevelDate? diff3 = character.LevelDates.OrderByDescending(ld => ld.Date).FirstOrDefault(ld => ld.Date <= latestLevelDate.Date.AddDays(-3));
-            int diff3Val = (diff3 == null) ? diff2Val : latestLevelDate.Level - diff3.Level;
+            int diff3Val = diff3 == null ? diff2Val : latestLevelDate.Level - diff3.Level;
             row += $",{diff3Val}";
 
             //7-day diff
             LevelDate? diff7 = character.LevelDates.OrderByDescending(ld => ld.Date).FirstOrDefault(ld => ld.Date <= latestLevelDate.Date.AddDays(-7));
-            int diff7Val = (diff7 == null) ? diff3Val : latestLevelDate.Level - diff7.Level;
+            int diff7Val = diff7 == null ? diff3Val : latestLevelDate.Level - diff7.Level;
             row += $",{diff7Val}";
 
             row += $",{character.Guild}";

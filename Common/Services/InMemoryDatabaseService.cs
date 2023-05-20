@@ -49,7 +49,9 @@ namespace MageloRankings.Services
                 query = query.Reverse();
             }
 
-            return query.Take(queryParams.Take).ToList();
+            return (queryParams.Take == -1) 
+                ? query.ToList() 
+                : query.Take(queryParams.Take).ToList();
         }
 
         private Expression<Func<Character, bool>> CreatePredicate(Filter filter)

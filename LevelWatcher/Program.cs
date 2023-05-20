@@ -1,4 +1,4 @@
-﻿using LevelWatcher.Models;
+﻿using LevelWatcher.Services;
 using System.Windows.Forms;
 namespace LevelWatcher
 {
@@ -7,9 +7,10 @@ namespace LevelWatcher
         [STAThread]
         static void Main(string[] args)
         {
-            Console.WriteLine("Select latest LevelWatcher.csv file (if any). If this is your first time running this then close the file selector dialog.");
+            Console.WriteLine("Select latest LevelWatcher.csv file (if any). If this is your first run then close the file selector dialog.");
 
             string? csvPath = PromptFilePath();
+            //string? csvPath = null;
             if (csvPath == null)
             {
                 Console.WriteLine("Since no LevelWatcher.csv was selected, a new one will be created");
@@ -22,12 +23,16 @@ namespace LevelWatcher
             Console.WriteLine("\nEnter the date of this export in the format MM/DD/YYYY. Leave blank for today's date.");
             string? dateString = Console.ReadLine();
 
-            DataStoreParser parser = new DataStoreParser(csvPath, exportPath, dateString);
-            parser.IngestData();
+            DataStoreService parser = new DataStoreService(csvPath, exportPath, dateString);
+            parser.DoTheThing().GetAwaiter().GetResult();
 
+            Console.WriteLine("Press any key to close this window.");
             Console.ReadKey();
         }
 
+
+
+        [STAThread]
         static private string? PromptFilePath()
         {
             OpenFileDialog fd = new OpenFileDialog();
